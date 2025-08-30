@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>UniWebJASM – Unity Web Player Emulator</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>UniWebJASM</h1>
+        <button id="theme-toggle">🌙</button>
+    </header>
+    <main>
+        <section id="upload-section">
+            <label for="unity-file">Choose a Unity Web Player (.unity3d) file:</label>
+            <input type="file" id="unity-file" accept=".unity3d" />
+            <div id="status"></div>
+        </section>
+        <section id="game-container">
+            <!-- The emulated Unity Web Player content will go here -->
+        </section>
+    </main>
+    <footer>
+        <p>Open Source • <a href="https://github.com/SSMG4/UniWebJASM" target="_blank">GitHub</a></p>
+    </footer>
+    <script src="script.js"></script>
+</body>
+</html>
