@@ -22,11 +22,7 @@ themeToggle.addEventListener('click', () => {
 applyTheme();
 
 // File upload handling
-const unityFileInput = document.getElementById('unity-file');
-const statusDiv = document.getElementById('status');
-const gameContainer = document.getElementById('game-container');
-
-unityFileInput.addEventListener('change', (e) => {
+unityFileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) {
         statusDiv.textContent = 'No file selected.';
@@ -36,7 +32,20 @@ unityFileInput.addEventListener('change', (e) => {
         statusDiv.textContent = 'Please select a .unity3d file.';
         return;
     }
-    statusDiv.textContent = `Loaded "${file.name}". (Emulation coming soon)`;
-    // Placeholder: Here you’d initiate WASM/JS emulation
-    gameContainer.textContent = 'Unity Web Player emulation not implemented yet.';
+
+    // Read the file as ArrayBuffer
+    const buffer = await file.arrayBuffer();
+
+    // Parse the buffer and get info
+    const info = parseUnity3dBuffer(buffer);
+
+    // Display parsed info in the status area
+    statusDiv.textContent =
+        `Loaded "${file.name}"\n` +
+        `Signature: ${info.signature}\n` +
+        `Version: ${info.version}\n` +
+        `Size: ${info.fileSize} bytes`;
+
+    // Show a placeholder in the game container
+    gameContainer.textContent = 'Asset parsing in prototype stage.';
 });
