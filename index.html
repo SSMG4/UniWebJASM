@@ -2,10 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>UniWebJASM – Unity Web Player Emulator</title>
+    <title>UniWebJASM – Unity Web Player Emulator (Prototype)</title>
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="style.css">
+    <!-- pako is used for gzip/zlib decompression in-browser -->
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 </head>
 <body>
     <header>
@@ -19,7 +21,9 @@
             <div id="status"></div>
         </section>
         <section id="game-container">
-            <!-- The emulated Unity Web Player content will go here -->
+            <div id="asset-list" class="asset-list">
+                <p class="placeholder">Upload a .unity3d file to inspect assets and metadata.</p>
+            </div>
         </section>
     </main>
     <footer>
