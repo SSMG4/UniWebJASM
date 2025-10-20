@@ -6,8 +6,9 @@
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="style.css">
-    <!-- pako is used for gzip/zlib decompression in-browser -->
-    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <!-- pako & lz4 can remain available in the page if needed, but worker imports them directly -->
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/lz4js@1.3.2/build/lz4.min.js" defer></script>
 </head>
 <body>
     <header>
@@ -22,7 +23,7 @@
         </section>
         <section id="game-container">
             <div id="asset-list" class="asset-list">
-                <p class="placeholder">Upload a .unity3d file to inspect assets and metadata.</p>
+                <p class="placeholder">Upload a .unity3d file to inspect assets, images and extracted assemblies.</p>
             </div>
         </section>
     </main>
