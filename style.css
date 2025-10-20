@@ -47,22 +47,79 @@ main {
 
 #upload-section {
     margin-bottom: 2em;
+    width: 100%;
+    max-width: 960px;
 }
 
 #status {
     margin-top: 1em;
     font-size: 1em;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 #game-container {
     width: 960px;
+    max-width: calc(100% - 4em);
     height: 600px;
     background: #bbb;
     border: 2px dashed var(--accent);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     color: #888;
+    padding: 1em;
+    box-sizing: border-box;
+    overflow: auto;
+}
+
+.asset-list {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+
+.asset-card {
+    background: rgba(255,255,255,0.95);
+    border-radius: 6px;
+    padding: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    color: var(--fg);
+    max-width: 100%;
+    word-break: break-word;
+}
+
+.asset-card img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin-bottom: 6px;
+}
+
+.asset-meta {
+    font-size: 0.85em;
+    color: #444;
+}
+
+.asset-actions {
+    margin-top: 6px;
+}
+
+.asset-actions a {
+    background: var(--accent);
+    color: #fff;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    text-decoration: none;
+}
+
+.placeholder {
+    opacity: 0.7;
+    color: #444;
 }
 
 footer {
