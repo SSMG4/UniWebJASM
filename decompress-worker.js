@@ -1,12 +1,19 @@
-// decompress-worker.js - robust loader + decompression worker (tries local first, then CDNs)
-// Place this file in your project root and serve via http://localhost:8000/
+// decompress-worker.js - local-first loader + decompression worker for GitHub Pages
+// Place this file at project root (same dir as index.html). Ensure pako.min.js and lz4.min.js exist in repo root.
 
-// helper: try importScripts(url); if it fails, fetch the script, wrap in a blob and import that
+/*
+Behavior:
+- Try local './pako.min.js' and './lz4.min.js' first via importScripts.
+- If local file missing or importScripts blocked, try a small list of CDN fallbacks using fetch+blob.
+- Return a libs array describing exactly which file and method (importScripts or fetch+blob) succeeded or failed.
+*/
+
 async function ensureScript(url) {
     try {
         importScripts(url);
         return { ok: true, method: 'importScripts', url };
     } catch (err) {
+        // importScripts failed (CORS / MIME / nosniff). Try fetch+blob fallback.
         try {
             const res = await fetch(url, { cache: 'no-store' });
             if (!res.ok) {
@@ -71,22 +78,23 @@ self.onmessage = async (ev) => {
     const u8 = new Uint8Array(buffer);
     const result = { attempts: [], compression: null, decompressed: null, libs: [] };
 
-    // Candidate URLs: local first, then CDNs
+    // Local-first candidates (local copy in repo root => robust for Pages)
     const pakoCandidates = [
-        './pako.min.js',
+        './pako.min.js', // local (recommended)
+        // trusted CDN fallbacks (used only if local not present)
         'https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js',
-        'https://unpkg.com/pako@2.1.0/dist/pako.min.js',
-        'https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js'
+        'https://unpkg.com/pako@2.1.0/dist/pako.min.js'
     ];
 
+    // A known-working LZ4 build candidate list. Prefer local copy.
     const lz4Candidates = [
-        './lz4.min.js',
-        'https://cdn.jsdelivr.net/npm/lz4js@1.3.1/build/lz4.min.js',
-        'https://cdn.jsdelivr.net/npm/lz4js@1.3.0/build/lz4.min.js',
-        'https://unpkg.com/lz4js@1.3.1/build/lz4.min.js',
-        'https://unpkg.com/lz4js/build/lz4.min.js'
+        './lz4.min.js', // local (recommended)
+        // try older stable builds from unpkg or jsdelivr only as fallback
+        'https://unpkg.com/lz4js@0.6.1/build/lz4.min.js',
+        'https://cdn.jsdelivr.net/npm/lz4js@0.6.1/build/lz4.min.js'
     ];
 
+    // Load pako
     const pakoLoad = await ensureScriptFromList(pakoCandidates);
     result.libs.push({ name: 'pako', tried: pakoCandidates, outcome: pakoLoad });
     if (!pakoLoad.ok) {
@@ -95,6 +103,7 @@ self.onmessage = async (ev) => {
         result.attempts.push(`pako loaded via ${pakoLoad.chosen.method} (${pakoLoad.chosen.url})`);
     }
 
+    // Load lz4 (optional)
     const lz4Load = await ensureScriptFromList(lz4Candidates);
     result.libs.push({ name: 'lz4', tried: lz4Candidates, outcome: lz4Load });
     if (!lz4Load.ok) {
@@ -104,6 +113,7 @@ self.onmessage = async (ev) => {
     }
 
     try {
+        // gzip/zlib detection
         const gzipIdx = findSequence(u8, new Uint8Array([0x1F, 0x8B]));
         const zlib1Idx = findSequence(u8, new Uint8Array([0x78, 0x9C]));
         const zlib2Idx = findSequence(u8, new Uint8Array([0x78, 0xDA]));
@@ -122,16 +132,14 @@ self.onmessage = async (ev) => {
                         result.decompressed = out.buffer;
                         result.compression = 'gzip';
                         result.attempts.push(`gunzipped at offset ${c.idx} OK`);
-                        done = true;
-                        break;
+                        done = true; break;
                     } else if (c.type === 'zlib') {
                         const sub = u8.subarray(c.idx);
                         const out = pako.inflate(sub);
                         result.decompressed = out.buffer;
                         result.compression = 'zlib(deflate)';
                         result.attempts.push(`inflated zlib at offset ${c.idx} OK`);
-                        done = true;
-                        break;
+                        done = true; break;
                     }
                 } catch (err) {
                     result.attempts.push(`${c.type} at ${c.idx} failed: ${err && err.message ? err.message : err}`);
@@ -141,6 +149,7 @@ self.onmessage = async (ev) => {
             result.attempts.push('pako not available or no gzip/zlib signatures found.');
         }
 
+        // LZ4 frame attempts if lz4 available and not done
         if (!done && (typeof LZ4 !== 'undefined' || typeof lz4 !== 'undefined')) {
             const lz4FrameSig = new Uint8Array([0x04, 0x22, 0x4D, 0x18]);
             const lz4Idxs = findAllSequences(u8, lz4FrameSig);
@@ -149,22 +158,17 @@ self.onmessage = async (ev) => {
                     try {
                         const sub = u8.subarray(idx);
                         let out = null;
-                        if (typeof LZ4 !== 'undefined' && typeof LZ4.decode === 'function') {
-                            out = LZ4.decode(sub);
-                        } else if (typeof LZ4 !== 'undefined' && typeof LZ4.decompress === 'function') {
-                            out = LZ4.decompress(sub);
-                        } else if (typeof lz4 !== 'undefined' && typeof lz4.decompress === 'function') {
-                            out = lz4.decompress(sub);
-                        } else {
-                            throw new Error('LZ4 runtime not present after load.');
-                        }
+                        if (typeof LZ4 !== 'undefined' && typeof LZ4.decode === 'function') out = LZ4.decode(sub);
+                        else if (typeof LZ4 !== 'undefined' && typeof LZ4.decompress === 'function') out = LZ4.decompress(sub);
+                        else if (typeof lz4 !== 'undefined' && typeof lz4.decompress === 'function') out = lz4.decompress(sub);
+                        else throw new Error('LZ4 runtime not present after load.');
+
                         if (out) {
                             const outBuf = out.buffer || out;
                             result.decompressed = outBuf;
                             result.compression = 'lz4(frame)';
                             result.attempts.push(`LZ4 frame at ${idx} decompressed OK`);
-                            done = true;
-                            break;
+                            done = true; break;
                         }
                     } catch (err) {
                         result.attempts.push(`LZ4 at ${idx} failed: ${err && err.message ? err.message : err}`);
@@ -177,6 +181,7 @@ self.onmessage = async (ev) => {
             result.attempts.push('LZ4 library not available; skipping LZ4 attempts.');
         }
 
+        // Final best-effort: try pako.inflate entire buffer
         if (!done && typeof pako !== 'undefined') {
             try {
                 const out = pako.inflate(u8);
@@ -189,6 +194,7 @@ self.onmessage = async (ev) => {
             }
         }
 
+        // reply with decompressed buffer (transfer if present)
         if (result.decompressed) {
             const ab = (result.decompressed instanceof ArrayBuffer) ? result.decompressed : (result.decompressed.buffer || result.decompressed);
             postMessage({ ok: true, compression: result.compression, attempts: result.attempts, libs: result.libs, decompressed: ab }, [ab]);
