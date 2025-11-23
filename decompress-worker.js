@@ -87,12 +87,12 @@ self.onmessage = async (ev) => {
     ];
 
     // A known-working LZ4 build candidate list. Prefer local copy.
-     const lz4Candidates = [
-        './lz4.min.js', // local (recommended)
-        'https://cdn.jsdelivr.net/npm/lz4js@0.2.0/lz4.js',
-        'https://cdn.jsdelivr.net/npm/lz4js@0.2.0/dist/lz4.js',
-        'https://unpkg.com/lz4js@0.2.0/lz4.js'
+    const lz4Candidates = [
+       './lz4.js', // local copy (recommended)
+      'https://cdn.jsdelivr.net/npm/lz4js@0.2.0/lz4.js',
+      'https://unpkg.com/lz4js@0.2.0/lz4.js'
     ];
+
 
     // Load pako
     const pakoLoad = await ensureScriptFromList(pakoCandidates);

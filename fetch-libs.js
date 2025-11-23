@@ -15,7 +15,6 @@ const pakoCandidates = [
 const lz4Candidates = [
   './local-lz4-try-not-used.js',
   'https://cdn.jsdelivr.net/npm/lz4js@0.2.0/lz4.js',
-  'https://cdn.jsdelivr.net/npm/lz4js@0.2.0/dist/lz4.js',
   'https://unpkg.com/lz4js@0.2.0/lz4.js'
 ];
 
@@ -84,7 +83,7 @@ async function saveCandidates(candidates, outFilename) {
     console.log('pako saved from:', pakoResult.chosen);
   }
 
-  const lz4Result = await saveCandidates(lz4Candidates, 'lz4.min.js');
+  const lz4Result = await saveCandidates(lz4Candidates, 'lz4.js');
   if (!lz4Result.ok) {
     console.warn('Could not fetch lz4 automatically. Please download a working lz4 build (lz4.min.js) and place it in the project root.');
   } else {
