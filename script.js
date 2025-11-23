@@ -304,7 +304,7 @@ unityFileInput.addEventListener('change', async (e) => {
         `Loaded "${file.name}"\n` +
         `Header signature: ${signature}\n` +
         `File size: ${file.size} bytes\n` +
-        `Decompression attempts:\n  - ${workerAttempts.join('\n  - ')}\n` +
+        `Decompression attempts:\n${workerAttempts.map(a => `  - ${a}`).join('\n')}\n` +
         `Detected compression: ${detectedCompression || 'none / unknown'}\n` +
         `Worker libs: ${workerLibs.map(l => (l && l.method ? `${l.method} ${l.url}` : (l && l.url) || '')).join('; ')}\n`;
     statusDiv.textContent = statusText;

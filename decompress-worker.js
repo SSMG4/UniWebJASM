@@ -149,63 +149,44 @@ self.onmessage = async (ev) => {
             result.attempts.push('pako not available or no gzip/zlib signatures found.');
         }
 
-        // LZ4 frame attempts if lz4 available and not done
-        if (!done) {
-          const lz4FrameSig = new Uint8Array([0x04, 0x22, 0x4D, 0x18]);
-         const lz4Idxs = findAllSequences(u8, lz4FrameSig);
+// LZ4 frame attempts if not done
+if (!done) {
+    const lz4FrameSig = new Uint8Array([0x04, 0x22, 0x4D, 0x18]);
+    const lz4Idxs = findAllSequences(u8, lz4FrameSig);
 
-         // Detect LZ4 API variants seen in lz4js 0.2.0 and other builds
-          const hasLZ4 =
-             typeof LZ4 !== 'undefined' ||
-               typeof self.LZ4 !== 'undefined' ||
-              typeof lz4 !== 'undefined';
+    const api = (typeof LZ4 !== 'undefined') ? LZ4 :
+                (typeof self !== 'undefined' && typeof self.LZ4 !== 'undefined') ? self.LZ4 :
+                (typeof lz4 !== 'undefined') ? lz4 : null;
 
-          const tryDecode = (bytes) => {
-             // Return ArrayBuffer or null
-              try {
-                  const api = (typeof LZ4 !== 'undefined') ? LZ4 :
-                             (typeof self.LZ4 !== 'undefined') ? self.LZ4 :
-                                (typeof lz4 !== 'undefined') ? lz4 : null;
+    const hasLZ4 = !!api;
 
-                 if (!api) throw new Error('LZ4 runtime not present.');
-
-                   // Common function candidates (vary by build)
-                  if (typeof api.decode === 'function') {
-                     const out = api.decode(bytes);
-                      return (out && (out.buffer || out)) ? (out.buffer || out) : null;
-                 }
-                   if (typeof api.decompress === 'function') {
-                      const out = api.decompress(bytes);
-                      return (out && (out.buffer || out)) ? (out.buffer || out) : null;
-                 }
-                 if (typeof api.uncompress === 'function') {
-                     const out = api.uncompress(bytes);
-                     return (out && (out.buffer || out)) ? (out.buffer || out) : null;
-                 }
-                 if (typeof api.decompressFrame !== 'undefined') {
-                     // Some builds expose frame helpers
-                     const out = api.decompressFrame(bytes);
-                     return (out && (out.buffer || out)) ? (out.buffer || out) : null;
-                 }
-                  throw new Error('No compatible LZ4 decode function found.');
-              } catch (e) {
-                  return { error: e };
-              }
-         };
+    const tryDecode = (bytes) => {
+        // Try common function names used across builds
+        if (!api) throw new Error('LZ4 runtime not present.');
+        if (typeof api.decode === 'function') return api.decode(bytes);
+        if (typeof api.decompress === 'function') return api.decompress(bytes);
+        if (typeof api.uncompress === 'function') return api.uncompress(bytes);
+        if (typeof api.decompressFrame === 'function') return api.decompressFrame(bytes);
+        throw new Error('No compatible LZ4 decode function found.');
+    };
 
     if (lz4Idxs.length > 0 && hasLZ4) {
         for (const idx of lz4Idxs) {
-            const sub = u8.subarray(idx);
-            const out = tryDecode(sub);
-            if (out && !(out.error)) {
-                const ab = (out instanceof ArrayBuffer) ? out : (out.buffer || out);
-                result.decompressed = ab;
-                result.compression = 'lz4(frame)';
-                result.attempts.push(`LZ4 frame at ${idx} decompressed OK`);
-                done = true;
-                break;
-            } else {
-                result.attempts.push(`LZ4 at ${idx} failed: ${out.error ? out.error.message : 'unknown decode failure'}`);
+            try {
+                const sub = u8.subarray(idx);
+                const out = tryDecode(sub);
+                const ab = (out instanceof ArrayBuffer) ? out : (out && out.buffer) ? out.buffer : null;
+                if (ab) {
+                    result.decompressed = ab;
+                    result.compression = 'lz4(frame)';
+                    result.attempts.push(`LZ4 frame at ${idx} decompressed OK`);
+                    done = true;
+                    break;
+                } else {
+                    result.attempts.push(`LZ4 at ${idx} produced no buffer`);
+                }
+            } catch (err) {
+                result.attempts.push(`LZ4 at ${idx} failed: ${err && err.message ? err.message : String(err)}`);
             }
         }
     } else if (!hasLZ4) {
