@@ -66,11 +66,12 @@ main {
     border: 2px dashed var(--accent);
     display: flex;
     align-items: flex-start;
-    justify-content: center;
+    justify-content: flex-start;
     color: #888;
     padding: 1em;
     box-sizing: border-box;
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
 }
 
 .asset-list {

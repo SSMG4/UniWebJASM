@@ -312,10 +312,28 @@ unityFileInput.addEventListener('change', async (e) => {
     // Choose buffer to scan: decompressedBuffer if available or the original `buffer` (which is still valid)
     const scanBuffer = decompressedBuffer || buffer;
 
-    // Extract strings
-    const strings = extractAsciiStrings(scanBuffer, 6, 60);
-    if (strings.length > 0) {
-        addAssetCard(null, `Extracted strings (sample): ${strings.slice(0, 8).join(', ')}`);
+// Extract strings
+const strings = extractAsciiStrings(scanBuffer, 6, 60);
+if (strings.length > 0) {
+    addAssetCard(null, `Extracted strings (sample): ${strings.slice(0, 8).join(', ')}`);
+}
+
+    // Parse Unity bundle/serialized file
+    try {
+      const { UnityParser } = await import('./parser.js');
+      const parser = new UnityParser(scanBuffer);
+      const hdrText = parser.parseHeader();
+      const assetsMeta = parser.parseAssets();
+
+      addAssetCard(null, `Parsed header: ${hdrText}`);
+      if (assetsMeta && assetsMeta.length > 0) {
+           for (const a of assetsMeta.slice(0, 12)) {
+               addAssetCard(null, `Parsed asset: [${a.type}] ${a.name}`);
+         }
+      }
+    } catch (err) {
+      console.warn('Parser failed:', err);
+       addAssetCard(null, `Parser error: ${err && err.message ? err.message : String(err)}`);
     }
 
     // Scan for images
@@ -351,6 +369,12 @@ unityFileInput.addEventListener('change', async (e) => {
             addAssetCard(blob, `Possible PE (bytes ${asm.start}-${asm.end})`, suggestedName);
         }
     }
+
+    // --- Emulator integration ---
+    import("./emulator.js").then(({ UniWebJASM }) => {
+        const emulator = new UniWebJASM(scanBuffer);
+        emulator.start();
+    });
 
     statusDiv.textContent += '\nDone. (Worker-driven decompression completed.)';
 });
