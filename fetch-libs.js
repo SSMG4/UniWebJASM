@@ -13,12 +13,10 @@ const pakoCandidates = [
 ];
 
 const lz4Candidates = [
-  './local-lz4-try-not-used.js', // placeholder so local file attempt happens via worker as well; keep here for demonstration
-  'https://cdn.jsdelivr.net/npm/lz4js@1.3.1/build/lz4.min.js',
-  'https://cdn.jsdelivr.net/npm/lz4js@1.3.0/build/lz4.min.js',
-  'https://unpkg.com/lz4js@1.3.1/build/lz4.min.js',
-  'https://unpkg.com/lz4js/build/lz4.min.js',
-  'https://unpkg.com/lz4js@latest/build/lz4.min.js'
+  './local-lz4-try-not-used.js',
+  'https://cdn.jsdelivr.net/npm/lz4js@0.2.0/lz4.js',
+  'https://cdn.jsdelivr.net/npm/lz4js@0.2.0/dist/lz4.js',
+  'https://unpkg.com/lz4js@0.2.0/lz4.js'
 ];
 
 async function tryFetch(url) {
