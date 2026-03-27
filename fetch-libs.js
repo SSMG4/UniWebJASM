@@ -1,8 +1,3 @@
-// fetch-libs.js
-// Run this from your project root (node >= 18 recommended).
-// It will attempt candidate CDN URLs and save local copies of pako.min.js and lz4.min.js
-// Usage: node fetch-libs.js
-
 const fs = require('fs');
 const path = require('path');
 
@@ -20,13 +15,13 @@ const lz4Candidates = [
 
 async function tryFetch(url) {
   try {
-    // Node 18+ global fetch
+    
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) {
       return { ok: false, status: res.status + ' ' + res.statusText };
     }
     const text = await res.text();
-    // quick sanity check
+    
     if (!text || text.length < 10) return { ok: false, status: 'empty body' };
     return { ok: true, text };
   } catch (err) {
@@ -38,7 +33,7 @@ async function saveCandidates(candidates, outFilename) {
   console.log(`Trying to fetch candidates for ${outFilename}...`);
   for (const url of candidates) {
     if (!url) continue;
-    // Skip local placeholder `./local-lz4-try-not-used.js` (the worker will attempt local files directly)
+    
     if (url.startsWith('./')) {
       const localPath = path.resolve(url);
       if (fs.existsSync(localPath)) {
@@ -69,7 +64,7 @@ async function saveCandidates(candidates, outFilename) {
 }
 
 (async () => {
-  // sanity: require node fetch
+  
   if (typeof fetch !== 'function') {
     console.error('This script requires a Node runtime with global fetch (Node 18+).');
     process.exitCode = 1;

@@ -1,29 +1,37 @@
-# UniWebJASM (W.I.P)
+# UWP.js
 
-**UniWebJASM** is an open source project to revive Unity Web Player games online, using modern browser technology (JS/WASM).  
-Upload your `.unity3d` files to play them directly in the browser.
+**UWP.js** is an open source project to revive Unity Web Player games in the browser using modern JS/WASM technology.  
+Upload your `.unity3d` files to play them directly — no plugin required.
 
 ## Features
 
-- Upload and play local Unity Web Player games (`.unity3d`)
+- Upload and inspect Unity Web Player games (`.unity3d`)
+- AssetBundle decompression (gzip, zlib, LZ4)
+- Asset browser: textures, meshes, audio, assemblies
 - Light/dark theme toggle
-- 100% open source
+- 100% open source, no server required
 
-**Roadmap:**  
-- WASM/JS-based Unity Web Player emulation  
-- Performance optimizations  
-- UI/UX improvements
+## Roadmap
+
+- Full UnityFS block decompression (LZ4HC, LZMA)
+- SerializedFile type tree parsing
+- Texture2D / Mesh / AudioClip extraction
+- WebGL scene rendering
+- Scene hierarchy viewer
 
 ## Usage
 
-1. Visit [https://ssmg4.github.io/UniWebJASM](https://ssmg4.github.io/UniWebJASM)
-2. Upload your `.unity3d` file
-3. Play! (Coming soon!)
+1. Serve the project root with any static file server
+2. Open `index.html`
+3. Upload a `.unity3d` file
 
-## Contributing
+## Development
 
-- Fork, PR, and help out at [GitHub](https://github.com/SSMG4/UniWebJASM)!
+```bash
+node fetch-libs.js
+python3 -m http.server 8000
+```
 
 ---
 
-© SSMG4, 2025
+© UWP.js contributors

@@ -1,19 +1,17 @@
-// emulator.js – orchestrator tying parser + runtime + renderer together
+import { UWPjsParser } from "./parser.js";
+import { UWPjsRuntime } from "./runtime.js";
+import { UWPjsRenderer } from "./renderer.js";
 
-import { UnityParser } from "./parser.js";
-import { UnityRuntime } from "./runtime.js";
-import { UnityRenderer } from "./renderer.js";
-
-export class UniWebJASM {
+export class UWPjs {
     constructor(buffer) {
         this.buffer = buffer;
-        this.parser = new UnityParser(buffer);
-        this.runtime = new UnityRuntime();
-        this.renderer = new UnityRenderer();
+        this.parser = new UWPjsParser(buffer);
+        this.runtime = new UWPjsRuntime();
+        this.renderer = new UWPjsRenderer();
     }
 
     async start() {
-        console.log("UniWebJASM start");
+        console.log("UWPjs start");
         const header = this.parser.parseHeader();
         const assets = this.parser.parseAssets();
         await this.runtime.init();

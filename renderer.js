@@ -1,7 +1,4 @@
-// renderer.js – WebGL bridge skeleton
-// Goal: stub Unity GL calls mapped to WebGL
-
-export class UnityRenderer {
+export class UWPjsRenderer {
     constructor(canvasId = "game-canvas") {
         this.canvas = document.getElementById(canvasId);
         if (!this.canvas) {
@@ -12,16 +9,16 @@ export class UnityRenderer {
             document.getElementById("game-container").appendChild(this.canvas);
         }
         this.gl = this.canvas.getContext("webgl2");
-        console.log("UnityRenderer initialized", this.gl);
+        console.log("UWPjsRenderer initialized", this.gl);
     }
 
     drawMesh(mesh) {
-        console.log("UnityRenderer drawMesh stub:", mesh);
-        // Later: implement WebGL buffer binding + draw calls
+        console.log("UWPjsRenderer drawMesh stub:", mesh);
+        
     }
 
     renderFrame() {
-        console.log("UnityRenderer renderFrame stub");
+        console.log("UWPjsRenderer renderFrame stub");
         this.gl.clearColor(0.1, 0.1, 0.1, 1.0);
         this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     }

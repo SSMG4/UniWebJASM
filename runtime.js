@@ -1,21 +1,18 @@
-// runtime.js – Mono WASM runtime skeleton
-// Goal: load assemblies and execute entry points
-
-export class UnityRuntime {
+export class UWPjsRuntime {
     constructor() {
         this.loadedAssemblies = [];
     }
 
     async init() {
-        console.log("UnityRuntime init (stub) – would load mono-wasm here");
+        console.log("UWPjsRuntime init (stub) – would load mono-wasm here");
     }
 
     async loadAssembly(blob) {
-        console.log("UnityRuntime loadAssembly called", blob);
+        console.log("UWPjsRuntime loadAssembly called", blob);
         this.loadedAssemblies.push(blob);
     }
 
     async run() {
-        console.log("UnityRuntime run (stub) – would execute Main/Awake/Start");
+        console.log("UWPjsRuntime run (stub) – would execute Main/Awake/Start");
     }
 }
