@@ -1,18 +1,15 @@
-const themeToggle = document.getElementById('theme-toggle');
-const docEl = document.documentElement;
-let darkMode = localStorage.getItem('theme') === 'dark';
-const unityFileInput = document.getElementById('unity-file');
-const statusDiv = document.getElementById('status');
-const assetList = document.getElementById('asset-list');
+const themeToggle   = document.getElementById('theme-toggle');
+const docEl         = document.documentElement;
+const unityFileInput= document.getElementById('unity-file');
+const statusDiv     = document.getElementById('status');
+const assetList     = document.getElementById('asset-list');
+
+let darkMode = localStorage.getItem('theme') === 'dark' ||
+    (localStorage.getItem('theme') === null && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
 function applyTheme() {
-    if (darkMode) {
-        docEl.setAttribute('data-theme', 'dark');
-        themeToggle.textContent = '☀️';
-    } else {
-        docEl.setAttribute('data-theme', 'light');
-        themeToggle.textContent = '🌙';
-    }
+    docEl.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+    themeToggle.textContent = darkMode ? '☀️' : '🌙';
 }
 
 themeToggle.addEventListener('click', () => {
@@ -23,122 +20,126 @@ themeToggle.addEventListener('click', () => {
 
 applyTheme();
 
-function setStatus(text) {
-    statusDiv.textContent = text;
-}
+function setStatus(text)    { statusDiv.textContent = text; }
+function appendStatus(text) { statusDiv.textContent += '\n' + text; }
+function clearAssets()      { assetList.innerHTML = ''; }
 
-function appendStatus(text) {
-    statusDiv.textContent += '\n' + text;
-}
-
-function clearAssets() {
-    assetList.innerHTML = '';
-}
-
-function addAssetCard(imgBlob, metaText, downloadName) {
+function makeCard(label, sub, blob, dlName) {
     const card = document.createElement('div');
     card.className = 'asset-card';
 
-    if (imgBlob) {
-        const url = URL.createObjectURL(imgBlob);
+    if (blob) {
+        const url = URL.createObjectURL(blob);
         const img = document.createElement('img');
         img.src = url;
+        img.loading = 'lazy';
         img.onload = () => URL.revokeObjectURL(url);
         card.appendChild(img);
     }
 
     const meta = document.createElement('div');
     meta.className = 'asset-meta';
-    meta.textContent = metaText;
+    meta.textContent = label;
     card.appendChild(meta);
 
-    if (downloadName && imgBlob) {
+    if (sub) {
+        const s = document.createElement('div');
+        s.className = 'asset-sub';
+        s.textContent = sub;
+        card.appendChild(s);
+    }
+
+    if (dlName && blob) {
         const actions = document.createElement('div');
         actions.className = 'asset-actions';
+        const url2 = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(imgBlob);
-        a.download = downloadName;
-        a.textContent = `Save ${downloadName}`;
-        a.onclick = () => setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        a.href    = url2;
+        a.download= dlName;
+        a.textContent = '↓ Save';
+        a.onclick = () => setTimeout(() => URL.revokeObjectURL(url2), 2000);
         actions.appendChild(a);
         card.appendChild(actions);
     }
 
     assetList.appendChild(card);
+    return card;
 }
 
-function addFileCard(name, buffer) {
-    const card = document.createElement('div');
-    card.className = 'asset-card';
-
-    const meta = document.createElement('div');
-    meta.className = 'asset-meta';
-    meta.textContent = `📄 ${name}  (${buffer.byteLength.toLocaleString()} bytes)`;
-    card.appendChild(meta);
-
-    const actions = document.createElement('div');
-    actions.className = 'asset-actions';
-    const blob = new Blob([buffer], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    a.textContent = `Save ${name}`;
-    a.onclick = () => setTimeout(() => URL.revokeObjectURL(url), 2000);
-    actions.appendChild(a);
-    card.appendChild(actions);
-
-    assetList.appendChild(card);
+function makeSectionHeader(title, count) {
+    const h = document.createElement('div');
+    h.className = 'section-header';
+    h.textContent = count != null ? `${title}  (${count})` : title;
+    assetList.appendChild(h);
 }
 
 function bytesToHex(u8, len) {
     let s = '';
-    for (let i = 0; i < Math.min(len, u8.length); i++) {
+    for (let i = 0; i < Math.min(len, u8.length); i++)
         s += u8[i].toString(16).padStart(2, '0') + ' ';
-    }
     return s.trim();
 }
 
-function findSequence(u8, seq, from) {
-    from = from || 0;
-    for (let i = from; i <= u8.length - seq.length; i++) {
-        let ok = true;
-        for (let j = 0; j < seq.length; j++) {
-            if (u8[i + j] !== seq[j]) { ok = false; break; }
+async function handleTextures(objects) {
+    const { decodeTexture2D } = await import('./textures.js');
+    const textures = objects.filter(o => o.classID === 28 && o.imageData);
+    if (!textures.length) return;
+    makeSectionHeader('Textures', textures.length);
+    for (const tex of textures) {
+        try {
+            const blob = await decodeTexture2D(tex.imageData, tex.width, tex.height, tex.textureFormat);
+            if (blob) {
+                makeCard(
+                    tex.name || '(unnamed)',
+                    `${tex.width}×${tex.height}  ${tex.formatName}`,
+                    blob,
+                    `${tex.name || 'texture'}.png`
+                );
+            } else {
+                makeCard(tex.name || '(unnamed)', `${tex.width}×${tex.height}  ${tex.formatName} — unsupported format`);
+            }
+        } catch (err) {
+            makeCard(tex.name || '(unnamed)', `Decode error: ${err.message}`);
         }
-        if (ok) return i;
     }
-    return -1;
 }
 
-function scanForImages(buffer) {
-    const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-    const results = [];
+function handleTextAssets(objects) {
+    const texts = objects.filter(o => o.classID === 49 && o.text);
+    if (!texts.length) return;
+    makeSectionHeader('Text Assets', texts.length);
+    for (const t of texts) {
+        const card = makeCard(t.name || '(unnamed)', t.text.slice(0, 120) + (t.text.length > 120 ? '…' : ''));
+        const blob = new Blob([t.text], { type: 'text/plain' });
+        const url  = URL.createObjectURL(blob);
+        const actions = document.createElement('div');
+        actions.className = 'asset-actions';
+        const a = document.createElement('a');
+        a.href = url; a.download = `${t.name || 'text'}.txt`;
+        a.textContent = '↓ Save';
+        a.onclick = () => setTimeout(() => URL.revokeObjectURL(url), 2000);
+        actions.appendChild(a);
+        card.appendChild(actions);
+    }
+}
 
-    const pngSig = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-    let pos = 0;
-    while (true) {
-        const idx = findSequence(u8, pngSig, pos);
-        if (idx === -1) break;
-        const iendIdx = findSequence(u8, new Uint8Array([0x49, 0x45, 0x4E, 0x44]), idx);
-        const end = iendIdx !== -1 ? Math.min(iendIdx + 12, u8.length) : u8.length;
-        results.push({ type: 'png', start: idx, end });
-        pos = end;
+function handleOtherAssets(objects) {
+    const skip = new Set([28, 49]);
+    const rest = objects.filter(o => !skip.has(o.classID));
+    if (!rest.length) return;
+
+    const byClass = new Map();
+    for (const o of rest) {
+        const k = o.className;
+        if (!byClass.has(k)) byClass.set(k, []);
+        byClass.get(k).push(o);
     }
 
-    const jpegStart = new Uint8Array([0xFF, 0xD8]);
-    const jpegEnd   = new Uint8Array([0xFF, 0xD9]);
-    pos = 0;
-    while (true) {
-        const idx = findSequence(u8, jpegStart, pos);
-        if (idx === -1) break;
-        const jend = findSequence(u8, jpegEnd, idx + 2);
-        const end = jend !== -1 ? jend + 2 : u8.length;
-        results.push({ type: 'jpg', start: idx, end });
-        pos = end;
+    makeSectionHeader('Other Assets', rest.length);
+    for (const [cls, items] of byClass) {
+        const names = items.map(i => i.name || '?').filter(Boolean).slice(0, 8).join(', ');
+        makeCard(cls, `${items.length} object${items.length !== 1 ? 's' : ''}${names ? ' — ' + names : ''}`);
     }
-
-    return results;
 }
 
 unityFileInput.addEventListener('change', async (e) => {
@@ -148,64 +149,70 @@ unityFileInput.addEventListener('change', async (e) => {
     if (!file) { setStatus('No file selected.'); return; }
     if (!file.name.endsWith('.unity3d')) { setStatus('Please select a .unity3d file.'); return; }
 
-    setStatus(`Reading ${file.name} (${file.size.toLocaleString()} bytes) …`);
+    setStatus(`Reading ${file.name} (${(file.size / 1024).toFixed(1)} KB) …`);
 
     const buffer = await file.arrayBuffer();
     const u8head = new Uint8Array(buffer, 0, Math.min(16, buffer.byteLength));
-    appendStatus(`Header bytes: ${bytesToHex(u8head, 16)}`);
+    appendStatus(`Signature: ${bytesToHex(u8head, 8)}`);
 
     const { UWPjsParser } = await import('./parser.js');
     const parser = new UWPjsParser(buffer);
 
-    let parseResult;
+    let parsed;
     try {
-        parseResult = parser.parse();
+        parsed = parser.parse();
     } catch (err) {
-        appendStatus(`Parse exception: ${err.message || err}`);
-        parseResult = { ok: false, files: [], headerStr: 'Exception', error: err.message };
+        setStatus(`Parse exception: ${err.message ?? err}`);
+        return;
     }
 
-    appendStatus(`Bundle kind : ${parseResult.bundleKind || 'unknown'}`);
-    appendStatus(`Header      : ${parseResult.headerStr || '—'}`);
+    appendStatus(`Format  : ${parsed.bundleKind ?? 'unknown'}`);
+    appendStatus(`Bundle  : ${parsed.headerStr ?? '—'}`);
+    if (parsed.error)  appendStatus(`Note    : ${parsed.error}`);
+    if (parsed.blocks) appendStatus(`Blocks  : ${parsed.blocks.length}`);
+    if (parsed.dirs)   appendStatus(`Entries : ${parsed.dirs.length}`);
 
-    if (parseResult.error) {
-        appendStatus(`Note        : ${parseResult.error}`);
-    }
+    const files = parsed.files ?? [];
+    appendStatus(`Files   : ${files.length}`);
 
-    if (parseResult.blocks) {
-        appendStatus(`Data blocks : ${parseResult.blocks.length}`);
-    }
-
-    if (parseResult.dirs) {
-        appendStatus(`Dir entries : ${parseResult.dirs.length}`);
-    }
-
-    const files = parseResult.files || [];
-    appendStatus(`Extracted files: ${files.length}`);
-
-    if (files.length === 0) {
+    if (!files.length) {
         const p = document.createElement('p');
         p.className = 'placeholder';
-        p.textContent = parseResult.error
-            ? `Could not extract files: ${parseResult.error}`
-            : 'No files extracted from bundle.';
+        p.textContent = parsed.error ?? 'No files could be extracted from this bundle.';
         assetList.appendChild(p);
-    } else {
-        for (const f of files) {
-            addFileCard(f.name, f.buffer);
-            const fu8 = new Uint8Array(f.buffer);
-            const images = scanForImages(fu8);
-            for (const im of images) {
-                const mime = im.type === 'png' ? 'image/png' : 'image/jpeg';
-                const blob = new Blob([fu8.subarray(im.start, im.end)], { type: mime });
-                addAssetCard(blob, `${im.type.toUpperCase()} in ${f.name} (${im.end - im.start} bytes)`, `${f.name}_${im.start}.${im.type}`);
-            }
-        }
-        appendStatus(`Done.`);
+        return;
     }
 
+    const { parseSerializedFile } = await import('./serializedf.js');
+
+    let totalObjects = 0;
+    for (const f of files) {
+        appendStatus(`\nParsing ${f.name} …`);
+        let sf;
+        try {
+            sf = parseSerializedFile(f.buffer, f.name);
+        } catch (err) {
+            makeCard(f.name, `SerializedFile parse error: ${err.message ?? err}`);
+            continue;
+        }
+
+        if (!sf.ok) {
+            const blob = new Blob([f.buffer], { type: 'application/octet-stream' });
+            makeCard(f.name, `${sf.error ?? 'Could not parse as SerializedFile'} — raw download available`, blob, f.name);
+            continue;
+        }
+
+        appendStatus(`  Unity ${sf.unityVersion}  SF v${sf.version}  types=${sf.typeCount}  objects=${sf.objectCount}${sf.truncated ? ' (capped at 2000)' : ''}`);
+        totalObjects += sf.objectCount;
+
+        await handleTextures(sf.objects);
+        handleTextAssets(sf.objects);
+        handleOtherAssets(sf.objects);
+    }
+
+    appendStatus(`\nDone — ${totalObjects} total object${totalObjects !== 1 ? 's' : ''} across ${files.length} file${files.length !== 1 ? 's' : ''}.`);
+
     import('./emulator.js').then(({ UWPjs }) => {
-        const emulator = new UWPjs(buffer);
-        emulator.start();
+        new UWPjs(buffer).start();
     }).catch(() => {});
 });

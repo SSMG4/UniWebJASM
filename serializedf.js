@@ -1,0 +1,357 @@
+const CLASSID = new Map([
+    [1,'GameObject'],[4,'Transform'],[12,'Animation'],
+    [20,'Camera'],[21,'Material'],[23,'MeshRenderer'],[25,'Renderer'],
+    [28,'Texture2D'],[33,'MeshFilter'],[43,'Mesh'],[48,'Shader'],
+    [49,'TextAsset'],[65,'BoxCollider'],[74,'AnimationClip'],
+    [82,'AudioListener'],[83,'AudioClip'],[84,'AudioSource'],
+    [108,'Light'],[114,'MonoBehaviour'],[115,'MonoScript'],
+    [128,'Font'],[129,'PlayerSettings'],[141,'BuildSettings'],
+    [142,'ResourceManager'],[150,'PreloadData'],[152,'Prefab'],
+    [194,'AssetBundle'],[212,'Sprite'],[218,'RenderTexture'],
+    [220,'LightmapSettings'],[221,'RenderSettings'],
+    [222,'RectTransform'],[230,'CanvasRenderer'],
+]);
+
+const TEXFMT = new Map([
+    [1,'Alpha8'],[2,'ARGB4444'],[3,'RGB24'],[4,'RGBA32'],[5,'ARGB32'],
+    [7,'RGB565'],[9,'R16'],[10,'DXT1'],[12,'DXT5'],[13,'RGBA4444'],
+    [14,'BGRA32'],[17,'RGBAHalf'],[20,'RGBAFloat'],
+    [25,'BC4'],[26,'BC5'],[28,'BC6H'],[29,'BC7'],
+    [34,'PVRTC_RGB2'],[35,'PVRTC_RGBA2'],[36,'PVRTC_RGB4'],[37,'PVRTC_RGBA4'],
+    [38,'ETC_RGB4'],[47,'EAC_R'],[49,'EAC_RG'],
+    [51,'ETC2_RGB4'],[52,'ETC2_RGBA1'],[53,'ETC2_RGBA8'],
+]);
+
+const BUILTIN = new Map([
+    [0,'AABB'],[5,'AnimationClip'],[19,'AnimationCurve'],[34,'AnimationState'],
+    [49,'Array'],[55,'Base'],[60,'BitField'],[69,'bitset'],[76,'bool'],
+    [81,'char'],[86,'ColorRGBA'],[96,'Component'],[106,'data'],[111,'deque'],
+    [117,'double'],[124,'dynamic_array'],[138,'FastPropertyName'],
+    [155,'first'],[161,'float'],[167,'Font'],[172,'GameObject'],
+    [183,'Generic Mono'],[196,'GradientNoise'],[210,'GUID'],
+    [215,'int'],[219,'list'],[224,'long long'],[234,'map'],
+    [238,'Matrix4x4f'],[249,'MdFour'],[256,'MonoBehaviour'],
+    [270,'MonoManager'],[282,'NavMeshSettings'],[298,'object'],
+    [305,'pair'],[310,'PPtr'],[315,'Prefab'],[322,'Quaternionf'],
+    [334,'Rectf'],[340,'RectInt'],[348,'RectManager'],
+    [360,'ResourceManager'],[376,'Rigidbody'],[386,'second'],
+    [393,'set'],[397,'short'],[403,'size'],[408,'SInt16'],
+    [415,'SInt32'],[422,'SInt64'],[429,'SInt8'],[435,'staticvector'],
+    [448,'string'],[455,'Texture'],[463,'Texture2D'],[473,'Transform'],
+    [483,'TypelessData'],[496,'UInt16'],[503,'UInt32'],[510,'UInt64'],
+    [517,'UInt8'],[523,'unsigned int'],[536,'unsigned long long'],
+    [555,'unsigned short'],[570,'vector'],[577,'Vector2f'],
+    [586,'Vector3f'],[595,'Vector4f'],[604,'m_Curve'],
+    [612,'m_EditorClassIdentifier'],[636,'m_EditorHideFlags'],
+    [654,'m_Enabled'],[664,'m_ExtensionPtr'],[679,'m_GameObject'],
+    [692,'m_Index'],[700,'m_IsArray'],[710,'m_IsStatic'],
+    [721,'m_MetaFlag'],[732,'m_Name'],[739,'m_ObjectHideFlags'],
+    [757,'m_PrefabInternal'],[774,'m_PrefabParentObject'],
+    [795,'m_Script'],[804,'m_StaticEditorFlags'],[824,'m_Type'],
+    [831,'m_Version'],[841,'Object'],[848,'Plane'],
+    [854,'PPtr<Component>'],[870,'PPtr<GameObject>'],[887,'PPtr<Material>'],
+    [902,'PPtr<MonoBehaviour>'],[922,'PPtr<MonoScript>'],
+    [939,'PPtr<Object>'],[952,'PPtr<Prefab>'],[965,'PPtr<Sprite>'],
+    [978,'PPtr<TextAsset>'],[994,'PPtr<Texture>'],
+    [1008,'PPtr<Texture2D>'],[1024,'PPtr<Transform>'],
+    [1040,'Prefab'],[1047,'Sprite'],[1054,'SpriteAtlas'],
+    [1066,'StreamingController'],[1085,'StreamingInfo'],[1099,'string'],
+]);
+
+function resolveStr(off, localBuf) {
+    if ((off >>> 0) >= 0x80000000) return BUILTIN.get(off & 0x7FFFFFFF) ?? '';
+    let s = '';
+    for (let i = off; i < localBuf.length && localBuf[i]; i++) s += String.fromCharCode(localBuf[i]);
+    return s;
+}
+
+function parseTypeTreeBlob(u8, pos) {
+    const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    const nodeCount = view.getUint32(pos, true); pos += 4;
+    const strLen    = view.getUint32(pos, true); pos += 4;
+    const nodes = [];
+    for (let i = 0; i < nodeCount; i++) {
+        nodes.push({
+            depth:     u8[pos + 2],
+            isArray:   u8[pos + 3] !== 0,
+            typeOff:   view.getUint32(pos + 4,  true),
+            nameOff:   view.getUint32(pos + 8,  true),
+            byteSize:  view.getInt32 (pos + 12, true),
+            metaFlags: view.getUint32(pos + 20, true),
+        });
+        pos += 24;
+    }
+    const strBuf = u8.subarray(pos, pos + strLen);
+    pos += strLen;
+    for (const n of nodes) {
+        n.typeName  = resolveStr(n.typeOff,  strBuf);
+        n.fieldName = resolveStr(n.nameOff, strBuf);
+    }
+    return { nodes, pos };
+}
+
+function a4(n) { return (n + 3) & ~3; }
+
+function deserializeObject(objU8, nodes, le) {
+    const view = new DataView(objU8.buffer, objU8.byteOffset, objU8.byteLength);
+    const maxPos = objU8.length;
+
+    function deser(ni, p) {
+        if (ni >= nodes.length) return { v: null, p, ni };
+        const node = nodes[ni];
+
+        let subtreeEnd = ni + 1;
+        while (subtreeEnd < nodes.length && nodes[subtreeEnd].depth > node.depth) subtreeEnd++;
+
+        if (node.typeName === 'string') {
+            if (p + 4 > maxPos) return { v: '', p, ni: subtreeEnd };
+            const slen = view.getUint32(p, le); p += 4;
+            const s = slen > 0 && p + slen <= maxPos
+                ? new TextDecoder().decode(objU8.subarray(p, p + slen))
+                : '';
+            p = a4(p + slen);
+            return { v: s, p, ni: subtreeEnd };
+        }
+
+        if (node.isArray) {
+            if (p + 4 > maxPos) return { v: null, p, ni: subtreeEnd };
+            const count = view.getUint32(p, le); p += 4;
+
+            const directKids = [];
+            for (let k = ni + 1; k < subtreeEnd; k++) {
+                if (nodes[k].depth === node.depth + 1) directKids.push(k);
+            }
+            const dataIdx = directKids[1];
+            if (dataIdx === undefined) return { v: null, p, ni: subtreeEnd };
+
+            const elem = nodes[dataIdx];
+            const elemHasKids = (dataIdx + 1 < subtreeEnd) && (nodes[dataIdx + 1].depth > elem.depth);
+
+            if (!elemHasKids && !elem.isArray && elem.byteSize > 0) {
+                const total = count * elem.byteSize;
+                if (p + total > maxPos) return { v: null, p, ni: subtreeEnd };
+                const raw = objU8.subarray(p, p + total);
+                p += total;
+                return { v: { raw, count, elemType: elem.typeName }, p, ni: subtreeEnd };
+            }
+
+            const arr = [];
+            for (let i = 0; i < Math.min(count, 4096); i++) {
+                const r = deser(dataIdx, p);
+                arr.push(r.v);
+                p = r.p;
+            }
+            return { v: arr, p, ni: subtreeEnd };
+        }
+
+        const hasKids = subtreeEnd > ni + 1;
+
+        if (!hasKids) {
+            if (node.byteSize <= 0 || p + node.byteSize > maxPos) return { v: null, p, ni: subtreeEnd };
+            let v;
+            switch (node.typeName) {
+                case 'bool': case 'UInt8': case 'SInt8': case 'char': v = objU8[p]; break;
+                case 'short': case 'SInt16': v = view.getInt16(p, le); break;
+                case 'unsigned short': case 'UInt16': v = view.getUint16(p, le); break;
+                case 'int': case 'SInt32': v = view.getInt32(p, le); break;
+                case 'unsigned int': case 'UInt32': v = view.getUint32(p, le); break;
+                case 'float': v = view.getFloat32(p, le); break;
+                case 'double': v = view.getFloat64(p, le); break;
+                case 'long long': case 'SInt64': {
+                    const lo = view.getUint32(p, le), hi = view.getInt32(p + 4, le);
+                    v = hi * 4294967296 + (lo >>> 0); break;
+                }
+                case 'unsigned long long': case 'UInt64': {
+                    const lo = view.getUint32(p, le), hi = view.getUint32(p + 4, le);
+                    v = hi * 4294967296 + lo; break;
+                }
+                default: v = objU8.slice(p, p + node.byteSize);
+            }
+            p += node.byteSize;
+            if (node.metaFlags & 0x4000) p = a4(p);
+            return { v, p, ni: subtreeEnd };
+        }
+
+        const obj = {};
+        let j = ni + 1;
+        while (j < subtreeEnd) {
+            if (nodes[j].depth === node.depth + 1) {
+                const r = deser(j, p);
+                obj[nodes[j].fieldName] = r.v;
+                p = r.p;
+                j = r.ni;
+            } else {
+                j++;
+            }
+        }
+        if (node.metaFlags & 0x4000) p = a4(p);
+        return { v: obj, p, ni: subtreeEnd };
+    }
+
+    return deser(0, 0).v;
+}
+
+function extractRawBytes(field) {
+    if (!field) return null;
+    if (field.raw instanceof Uint8Array) return field.raw;
+    if (field.Array?.raw instanceof Uint8Array) return field.Array.raw;
+    if (field.data?.raw instanceof Uint8Array) return field.data.raw;
+    return null;
+}
+
+function extractString(field) {
+    if (typeof field === 'string') return field;
+    const raw = extractRawBytes(field);
+    if (raw) { try { return new TextDecoder().decode(raw); } catch { return null; } }
+    return null;
+}
+
+function heuristicName(u8, le) {
+    const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    if (u8.length < 4) return '';
+    const len = view.getUint32(0, le);
+    if (len === 0 || len > 256 || len + 4 > u8.length) return '';
+    try { return new TextDecoder().decode(u8.subarray(4, 4 + len)); } catch { return ''; }
+}
+
+export function parseSerializedFile(buffer, fileName) {
+    const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer instanceof ArrayBuffer ? buffer : buffer.buffer);
+
+    if (u8.length < 20) return { ok: false, error: 'Too small', objects: [], unityVersion: '', fileName: fileName ?? '' };
+
+    const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+
+    const metadataSize = view.getUint32(0, false);
+    const version      = view.getUint32(8, false);
+    let   dataOffset   = view.getUint32(12, false);
+    const endianByte   = u8[16];
+
+    if (version < 9 || version > 30) {
+        return { ok: false, error: `Unsupported SF version ${version}`, objects: [], unityVersion: '', fileName: fileName ?? '' };
+    }
+
+    let pos = 20;
+    let unityVersion = '';
+    while (pos < u8.length && u8[pos] !== 0) unityVersion += String.fromCharCode(u8[pos++]);
+    pos++;
+
+    pos += 4;
+
+    const enableTypeTree = u8[pos++] !== 0;
+
+    let metaLE = true;
+    let typeCount = view.getUint32(pos, true);
+    if (typeCount > 50000) {
+        metaLE = false;
+        typeCount = view.getUint32(pos, false);
+        if (typeCount > 50000) {
+            return { ok: false, error: `Implausible type count (endian mismatch?)`, objects: [], unityVersion, fileName: fileName ?? '' };
+        }
+    }
+    pos += 4;
+
+    const types = [];
+    for (let t = 0; t < typeCount; t++) {
+        if (pos + 4 > u8.length) break;
+        const classID = view.getInt32(pos, metaLE); pos += 4;
+        if (version >= 17) pos++;
+        if (version >= 13) pos += 2;
+        if (version >= 17 && (classID < 0 || classID === 114)) pos += 16;
+        else if (version >= 13 && version < 17 && classID === 114) pos += 16;
+        pos += 16;
+        let typeTree = null;
+        if (enableTypeTree && version >= 12) {
+            const r = parseTypeTreeBlob(u8, pos);
+            typeTree = r.nodes;
+            pos = r.pos;
+        }
+        types.push({ classID, typeTree });
+    }
+
+    if (pos + 4 > u8.length) return { ok: true, objects: [], unityVersion, version, fileName: fileName ?? '', typeCount: types.length, objectCount: 0 };
+
+    const objCount = view.getUint32(pos, metaLE); pos += 4;
+    if (objCount > 500000) return { ok: false, error: `Implausible object count ${objCount}`, objects: [], unityVersion, fileName: fileName ?? '' };
+
+    const rawObjs = [];
+    for (let o = 0; o < objCount; o++) {
+        if (version >= 14 && (pos % 4 !== 0)) pos += 4 - (pos % 4);
+        if (pos + (version >= 14 ? 20 : 16) > u8.length) break;
+
+        let pathID;
+        if (version >= 14) {
+            const lo = view.getUint32(pos, metaLE), hi = view.getUint32(pos + 4, metaLE);
+            pathID = hi * 4294967296 + lo; pos += 8;
+        } else {
+            pathID = view.getInt32(pos, metaLE); pos += 4;
+        }
+
+        const byteStart = view.getUint32(pos, metaLE); pos += 4;
+        const byteSize  = view.getUint32(pos, metaLE); pos += 4;
+        const typeID    = view.getInt32(pos, metaLE);  pos += 4;
+
+        let classID = -1;
+        if (version < 17) { classID = view.getInt16(pos, metaLE); pos += 4; }
+        if (version < 11) pos++;
+
+        if (classID === -1 && typeID >= 0 && typeID < types.length) classID = types[typeID].classID;
+        rawObjs.push({ pathID, byteStart, byteSize, typeID, classID });
+    }
+
+    const objects = [];
+    for (const obj of rawObjs.slice(0, 2000)) {
+        const classID   = obj.classID;
+        const className = CLASSID.get(classID) ?? `Class${classID}`;
+        const typeTree  = (obj.typeID >= 0 && obj.typeID < types.length) ? types[obj.typeID].typeTree : null;
+        const start     = dataOffset + obj.byteStart;
+
+        if (start < 0 || start + obj.byteSize > u8.length || obj.byteSize === 0) {
+            objects.push({ classID, className, name: '?', error: 'out of bounds' });
+            continue;
+        }
+
+        const slice  = u8.subarray(start, start + obj.byteSize);
+        const asset  = { classID, className, name: '', pathID: obj.pathID };
+
+        try {
+            if (typeTree && typeTree.length > 0) {
+                const d = deserializeObject(slice, typeTree, metaLE);
+                asset.name = typeof d?.m_Name === 'string' ? d.m_Name : '';
+
+                if (classID === 28) {
+                    asset.width  = d?.m_Width;
+                    asset.height = d?.m_Height;
+                    asset.textureFormat = d?.m_TextureFormat;
+                    asset.formatName    = TEXFMT.get(d?.m_TextureFormat) ?? `fmt${d?.m_TextureFormat}`;
+                    const raw = extractRawBytes(d?.['image data']);
+                    if (raw && raw.length > 0) asset.imageData = raw;
+                } else if (classID === 83) {
+                    asset.channels      = d?.m_Channels;
+                    asset.frequency     = d?.m_Frequency;
+                    asset.bitsPerSample = d?.m_BitsPerSample;
+                } else if (classID === 49) {
+                    const t = extractString(d?.m_Script);
+                    if (t) asset.text = t.slice(0, 4096);
+                }
+            } else {
+                asset.name = heuristicName(slice, metaLE);
+            }
+        } catch (err) {
+            asset.parseError = err.message ?? String(err);
+        }
+
+        objects.push(asset);
+    }
+
+    return {
+        ok: true,
+        fileName: fileName ?? '',
+        version,
+        unityVersion,
+        enableTypeTree,
+        typeCount: types.length,
+        objectCount: rawObjs.length,
+        truncated: rawObjs.length > 2000,
+        objects,
+    };
+}
