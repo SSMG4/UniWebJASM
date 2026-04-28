@@ -12,22 +12,43 @@
         <h1>UWP.js</h1>
         <button id="theme-toggle" aria-label="Toggle theme">🌙</button>
     </header>
+
     <main>
         <section id="upload-section">
             <label for="unity-file">Unity Web Player file (.unity3d)</label>
             <input type="file" id="unity-file" accept=".unity3d" />
             <div id="status"></div>
         </section>
+
+        <section id="viewport-section">
+            <div id="canvas-bar">
+                <span class="panel-label">Render</span>
+            </div>
+            <canvas id="game-canvas" width="960" height="480"></canvas>
+        </section>
+
+        <section id="bottom-panels">
+            <div id="scene-wrap">
+                <div class="panel-label">Scene Graph</div>
+                <div id="scene-panel"></div>
+            </div>
+            <div id="log-wrap">
+                <div class="panel-label">Runtime Log</div>
+                <div id="runtime-log"></div>
+            </div>
+        </section>
+
         <section id="game-container">
             <div id="asset-list" class="asset-list">
                 <p class="placeholder">Upload a .unity3d file to extract and inspect its assets.</p>
             </div>
         </section>
     </main>
+
     <footer>
         <p>UWP.js &bull; Open Source</p>
     </footer>
+
     <script src="script.js"></script>
-    <script type="module" src="emulator.js"></script>
 </body>
 </html>

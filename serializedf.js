@@ -65,35 +65,74 @@ function resolveStr(off, localBuf) {
     return s;
 }
 
-function parseTypeTreeBlob(u8, pos) {
-    const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-    const nodeCount = view.getUint32(pos, true); pos += 4;
-    const strLen    = view.getUint32(pos, true); pos += 4;
-    const nodes = [];
+function parseTypeTreeBlob(u8, pos, le) {
+    const view     = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    const nodeCount = view.getUint32(pos, le); pos += 4;
+    const strLen    = view.getUint32(pos, le); pos += 4;
+    const nodes     = [];
     for (let i = 0; i < nodeCount; i++) {
         nodes.push({
+            version:   view.getUint16(pos,      le),
             depth:     u8[pos + 2],
             isArray:   u8[pos + 3] !== 0,
-            typeOff:   view.getUint32(pos + 4,  true),
-            nameOff:   view.getUint32(pos + 8,  true),
-            byteSize:  view.getInt32 (pos + 12, true),
-            metaFlags: view.getUint32(pos + 20, true),
+            typeOff:   view.getUint32(pos + 4,  le),
+            nameOff:   view.getUint32(pos + 8,  le),
+            byteSize:  view.getInt32 (pos + 12, le),
+            index:     view.getInt32 (pos + 16, le),
+            metaFlags: view.getUint32(pos + 20, le),
         });
         pos += 24;
     }
     const strBuf = u8.subarray(pos, pos + strLen);
     pos += strLen;
     for (const n of nodes) {
-        n.typeName  = resolveStr(n.typeOff,  strBuf);
+        n.typeName  = resolveStr(n.typeOff, strBuf);
         n.fieldName = resolveStr(n.nameOff, strBuf);
     }
     return { nodes, pos };
 }
 
+function parseOldTypeTreeNode(u8, pos, le, view) {
+    let typeName = '';
+    while (pos < u8.length && u8[pos] !== 0) typeName += String.fromCharCode(u8[pos++]);
+    pos++;
+    let fieldName = '';
+    while (pos < u8.length && u8[pos] !== 0) fieldName += String.fromCharCode(u8[pos++]);
+    pos++;
+
+    const byteSize  = view.getInt32 (pos, le); pos += 4;
+    const index     = view.getInt32 (pos, le); pos += 4;
+    const isArray   = view.getInt32 (pos, le) !== 0; pos += 4;
+    const version   = view.getInt32 (pos, le); pos += 4;
+    const metaFlags = view.getUint32(pos, le); pos += 4;
+    const childCount= view.getInt32 (pos, le); pos += 4;
+
+    const children = [];
+    for (let c = 0; c < childCount; c++) {
+        const child = parseOldTypeTreeNode(u8, pos, le, view);
+        pos = child._pos;
+        children.push(child);
+    }
+    return { typeName, fieldName, byteSize, isArray, version, metaFlags, index, children, _pos: pos };
+}
+
+function flattenOldTree(node, depth, out) {
+    out.push({
+        typeName:  node.typeName,
+        fieldName: node.fieldName,
+        byteSize:  node.byteSize,
+        isArray:   node.isArray,
+        metaFlags: node.metaFlags,
+        depth,
+    });
+    for (const c of node.children) flattenOldTree(c, depth + 1, out);
+    return out;
+}
+
 function a4(n) { return (n + 3) & ~3; }
 
 function deserializeObject(objU8, nodes, le) {
-    const view = new DataView(objU8.buffer, objU8.byteOffset, objU8.byteLength);
+    const view   = new DataView(objU8.buffer, objU8.byteOffset, objU8.byteLength);
     const maxPos = objU8.length;
 
     function deser(ni, p) {
@@ -124,7 +163,7 @@ function deserializeObject(objU8, nodes, le) {
             const dataIdx = directKids[1];
             if (dataIdx === undefined) return { v: null, p, ni: subtreeEnd };
 
-            const elem = nodes[dataIdx];
+            const elem        = nodes[dataIdx];
             const elemHasKids = (dataIdx + 1 < subtreeEnd) && (nodes[dataIdx + 1].depth > elem.depth);
 
             if (!elemHasKids && !elem.isArray && elem.byteSize > 0) {
@@ -151,12 +190,12 @@ function deserializeObject(objU8, nodes, le) {
             let v;
             switch (node.typeName) {
                 case 'bool': case 'UInt8': case 'SInt8': case 'char': v = objU8[p]; break;
-                case 'short': case 'SInt16': v = view.getInt16(p, le); break;
-                case 'unsigned short': case 'UInt16': v = view.getUint16(p, le); break;
-                case 'int': case 'SInt32': v = view.getInt32(p, le); break;
-                case 'unsigned int': case 'UInt32': v = view.getUint32(p, le); break;
-                case 'float': v = view.getFloat32(p, le); break;
-                case 'double': v = view.getFloat64(p, le); break;
+                case 'short': case 'SInt16':                           v = view.getInt16  (p, le); break;
+                case 'unsigned short': case 'UInt16':                  v = view.getUint16 (p, le); break;
+                case 'int': case 'SInt32':                             v = view.getInt32  (p, le); break;
+                case 'unsigned int': case 'UInt32':                    v = view.getUint32 (p, le); break;
+                case 'float':                                          v = view.getFloat32(p, le); break;
+                case 'double':                                         v = view.getFloat64(p, le); break;
                 case 'long long': case 'SInt64': {
                     const lo = view.getUint32(p, le), hi = view.getInt32(p + 4, le);
                     v = hi * 4294967296 + (lo >>> 0); break;
@@ -178,8 +217,8 @@ function deserializeObject(objU8, nodes, le) {
             if (nodes[j].depth === node.depth + 1) {
                 const r = deser(j, p);
                 obj[nodes[j].fieldName] = r.v;
-                p = r.p;
-                j = r.ni;
+                p  = r.p;
+                j  = r.ni;
             } else {
                 j++;
             }
@@ -193,9 +232,10 @@ function deserializeObject(objU8, nodes, le) {
 
 function extractRawBytes(field) {
     if (!field) return null;
+    if (field instanceof Uint8Array)     return field;
     if (field.raw instanceof Uint8Array) return field.raw;
     if (field.Array?.raw instanceof Uint8Array) return field.Array.raw;
-    if (field.data?.raw instanceof Uint8Array) return field.data.raw;
+    if (field.data?.raw instanceof Uint8Array)  return field.data.raw;
     return null;
 }
 
@@ -215,83 +255,111 @@ function heuristicName(u8, le) {
 }
 
 export function parseSerializedFile(buffer, fileName) {
-    const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer instanceof ArrayBuffer ? buffer : buffer.buffer);
+    const u8 = buffer instanceof Uint8Array ? buffer
+             : new Uint8Array(buffer instanceof ArrayBuffer ? buffer : buffer.buffer);
 
     if (u8.length < 20) return { ok: false, error: 'Too small', objects: [], unityVersion: '', fileName: fileName ?? '' };
 
-    const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-
-    const metadataSize = view.getUint32(0, false);
-    const version      = view.getUint32(8, false);
+    const view         = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    const metadataSize = view.getUint32(0,  false);
+    const version      = view.getUint32(8,  false);
     let   dataOffset   = view.getUint32(12, false);
-    const endianByte   = u8[16];
 
-    if (version < 9 || version > 30) {
+    if (version < 7 || version > 30) {
         return { ok: false, error: `Unsupported SF version ${version}`, objects: [], unityVersion: '', fileName: fileName ?? '' };
     }
 
+    const endianByte = u8[16];
+    const le         = (endianByte === 0);
+
     let pos = 20;
+
     let unityVersion = '';
     while (pos < u8.length && u8[pos] !== 0) unityVersion += String.fromCharCode(u8[pos++]);
     pos++;
 
     pos += 4;
 
-    const enableTypeTree = u8[pos++] !== 0;
+    if (version >= 13) {
+        const ett = u8[pos++];
+        void ett;
+    }
 
-    let metaLE = true;
-    let typeCount = view.getUint32(pos, true);
-    if (typeCount > 50000) {
-        metaLE = false;
-        typeCount = view.getUint32(pos, false);
-        if (typeCount > 50000) {
-            return { ok: false, error: `Implausible type count (endian mismatch?)`, objects: [], unityVersion, fileName: fileName ?? '' };
-        }
+    let typeCount;
+    {
+        const tcLE = view.getUint32(pos, true);
+        const tcBE = view.getUint32(pos, false);
+        typeCount  = (tcLE > 50000) ? tcBE : tcLE;
+        if (typeCount > 50000) return { ok: false, error: 'Implausible type count', objects: [], unityVersion, fileName: fileName ?? '' };
     }
     pos += 4;
 
     const types = [];
+
     for (let t = 0; t < typeCount; t++) {
         if (pos + 4 > u8.length) break;
-        const classID = view.getInt32(pos, metaLE); pos += 4;
-        if (version >= 17) pos++;
-        if (version >= 13) pos += 2;
+        const classID = view.getInt32(pos, le); pos += 4;
+
+        if (version >= 17) {
+            pos++;
+            pos += 2;
+        } else if (version >= 13) {
+            pos += 2;
+        }
+
         if (version >= 17 && (classID < 0 || classID === 114)) pos += 16;
         else if (version >= 13 && version < 17 && classID === 114) pos += 16;
-        pos += 16;
+
+        if (version >= 13) pos += 16;
+
         let typeTree = null;
-        if (enableTypeTree && version >= 12) {
-            const r = parseTypeTreeBlob(u8, pos);
+
+        if (version >= 12) {
+            const r = parseTypeTreeBlob(u8, pos, le);
             typeTree = r.nodes;
-            pos = r.pos;
+            pos      = r.pos;
+        } else {
+            const oldRoot = parseOldTypeTreeNode(u8, pos, le, view);
+            typeTree = flattenOldTree(oldRoot, 0, []);
+            pos = oldRoot._pos;
         }
+
         types.push({ classID, typeTree });
     }
 
-    if (pos + 4 > u8.length) return { ok: true, objects: [], unityVersion, version, fileName: fileName ?? '', typeCount: types.length, objectCount: 0 };
+    if (version >= 7 && version <= 13) {
+        pos += 4;
+    }
 
-    const objCount = view.getUint32(pos, metaLE); pos += 4;
+    if (pos + 4 > u8.length) {
+        return { ok: true, objects: [], unityVersion, version, fileName: fileName ?? '', typeCount: types.length, objectCount: 0 };
+    }
+
+    const objCount = view.getUint32(pos, le); pos += 4;
     if (objCount > 500000) return { ok: false, error: `Implausible object count ${objCount}`, objects: [], unityVersion, fileName: fileName ?? '' };
 
     const rawObjs = [];
+
     for (let o = 0; o < objCount; o++) {
         if (version >= 14 && (pos % 4 !== 0)) pos += 4 - (pos % 4);
-        if (pos + (version >= 14 ? 20 : 16) > u8.length) break;
 
         let pathID;
         if (version >= 14) {
-            const lo = view.getUint32(pos, metaLE), hi = view.getUint32(pos + 4, metaLE);
+            const lo = view.getUint32(pos, le), hi = view.getUint32(pos + 4, le);
             pathID = hi * 4294967296 + lo; pos += 8;
         } else {
-            pathID = view.getInt32(pos, metaLE); pos += 4;
+            pathID = view.getInt32(pos, le); pos += 4;
         }
 
-        const byteStart = view.getUint32(pos, metaLE); pos += 4;
-        const byteSize  = view.getUint32(pos, metaLE); pos += 4;
-        const typeID    = view.getInt32(pos, metaLE);  pos += 4;
+        const byteStart  = view.getUint32(pos, le); pos += 4;
+        const byteSize   = view.getUint32(pos, le); pos += 4;
+        const typeID     = view.getInt32 (pos, le); pos += 4;
 
         let classID = -1;
-        if (version < 17) { classID = view.getInt16(pos, metaLE); pos += 4; }
+        if (version < 17) {
+            classID = view.getInt16(pos, le); pos += 2;
+            pos += 2;
+        }
         if (version < 11) pos++;
 
         if (classID === -1 && typeID >= 0 && typeID < types.length) classID = types[typeID].classID;
@@ -299,6 +367,7 @@ export function parseSerializedFile(buffer, fileName) {
     }
 
     const objects = [];
+
     for (const obj of rawObjs.slice(0, 2000)) {
         const classID   = obj.classID;
         const className = CLASSID.get(classID) ?? `Class${classID}`;
@@ -310,21 +379,23 @@ export function parseSerializedFile(buffer, fileName) {
             continue;
         }
 
-        const slice  = u8.subarray(start, start + obj.byteSize);
-        const asset  = { classID, className, name: '', pathID: obj.pathID };
+        const slice = u8.subarray(start, start + obj.byteSize);
+        const asset = { classID, className, name: '', pathID: obj.pathID };
 
         try {
             if (typeTree && typeTree.length > 0) {
-                const d = deserializeObject(slice, typeTree, metaLE);
+                const d = deserializeObject(slice, typeTree, le);
                 asset.name = typeof d?.m_Name === 'string' ? d.m_Name : '';
 
                 if (classID === 28) {
-                    asset.width  = d?.m_Width;
-                    asset.height = d?.m_Height;
+                    asset.width         = d?.m_Width;
+                    asset.height        = d?.m_Height;
                     asset.textureFormat = d?.m_TextureFormat;
                     asset.formatName    = TEXFMT.get(d?.m_TextureFormat) ?? `fmt${d?.m_TextureFormat}`;
                     const raw = extractRawBytes(d?.['image data']);
                     if (raw && raw.length > 0) asset.imageData = raw;
+                } else if (classID === 43) {
+                    asset.meshData = d;
                 } else if (classID === 83) {
                     asset.channels      = d?.m_Channels;
                     asset.frequency     = d?.m_Frequency;
@@ -332,9 +403,21 @@ export function parseSerializedFile(buffer, fileName) {
                 } else if (classID === 49) {
                     const t = extractString(d?.m_Script);
                     if (t) asset.text = t.slice(0, 4096);
+                } else if (classID === 1) {
+                    asset.isActive  = d?.m_IsActive;
+                    asset.isStatic  = d?.m_IsStatic;
+                    asset.layer     = d?.m_Layer;
+                    asset.tag       = d?.m_Tag;
+                    asset.components = d?.m_Component;
+                } else if (classID === 4) {
+                    asset.localPosition = d?.m_LocalPosition;
+                    asset.localRotation = d?.m_LocalRotation;
+                    asset.localScale    = d?.m_LocalScale;
+                    asset.children      = d?.m_Children;
+                    asset.father        = d?.m_Father;
                 }
             } else {
-                asset.name = heuristicName(slice, metaLE);
+                asset.name = heuristicName(slice, le);
             }
         } catch (err) {
             asset.parseError = err.message ?? String(err);
@@ -345,13 +428,12 @@ export function parseSerializedFile(buffer, fileName) {
 
     return {
         ok: true,
-        fileName: fileName ?? '',
+        fileName:      fileName ?? '',
         version,
         unityVersion,
-        enableTypeTree,
-        typeCount: types.length,
-        objectCount: rawObjs.length,
-        truncated: rawObjs.length > 2000,
+        typeCount:     types.length,
+        objectCount:   rawObjs.length,
+        truncated:     rawObjs.length > 2000,
         objects,
     };
 }

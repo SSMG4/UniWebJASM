@@ -1,8 +1,10 @@
-const themeToggle   = document.getElementById('theme-toggle');
-const docEl         = document.documentElement;
-const unityFileInput= document.getElementById('unity-file');
-const statusDiv     = document.getElementById('status');
-const assetList     = document.getElementById('asset-list');
+const themeToggle    = document.getElementById('theme-toggle');
+const docEl          = document.documentElement;
+const unityFileInput = document.getElementById('unity-file');
+const statusDiv      = document.getElementById('status');
+const assetList      = document.getElementById('asset-list');
+const runtimeLog     = document.getElementById('runtime-log');
+const scenePanel     = document.getElementById('scene-panel');
 
 let darkMode = localStorage.getItem('theme') === 'dark' ||
     (localStorage.getItem('theme') === null && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -22,7 +24,16 @@ applyTheme();
 
 function setStatus(text)    { statusDiv.textContent = text; }
 function appendStatus(text) { statusDiv.textContent += '\n' + text; }
-function clearAssets()      { assetList.innerHTML = ''; }
+function clearAssets()      { assetList.innerHTML = '';  }
+function clearScene()       { if (scenePanel) scenePanel.innerHTML = ''; }
+
+function appendRuntimeLog(msg) {
+    if (!runtimeLog) return;
+    const line = document.createElement('div');
+    line.textContent = msg;
+    runtimeLog.appendChild(line);
+    runtimeLog.scrollTop = runtimeLog.scrollHeight;
+}
 
 function makeCard(label, sub, blob, dlName) {
     const card = document.createElement('div');
@@ -31,20 +42,20 @@ function makeCard(label, sub, blob, dlName) {
     if (blob) {
         const url = URL.createObjectURL(blob);
         const img = document.createElement('img');
-        img.src = url;
+        img.src     = url;
         img.loading = 'lazy';
-        img.onload = () => URL.revokeObjectURL(url);
+        img.onload  = () => URL.revokeObjectURL(url);
         card.appendChild(img);
     }
 
     const meta = document.createElement('div');
-    meta.className = 'asset-meta';
+    meta.className   = 'asset-meta';
     meta.textContent = label;
     card.appendChild(meta);
 
     if (sub) {
         const s = document.createElement('div');
-        s.className = 'asset-sub';
+        s.className   = 'asset-sub';
         s.textContent = sub;
         card.appendChild(s);
     }
@@ -53,11 +64,11 @@ function makeCard(label, sub, blob, dlName) {
         const actions = document.createElement('div');
         actions.className = 'asset-actions';
         const url2 = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href    = url2;
-        a.download= dlName;
+        const a    = document.createElement('a');
+        a.href      = url2;
+        a.download  = dlName;
         a.textContent = '↓ Save';
-        a.onclick = () => setTimeout(() => URL.revokeObjectURL(url2), 2000);
+        a.onclick   = () => setTimeout(() => URL.revokeObjectURL(url2), 2000);
         actions.appendChild(a);
         card.appendChild(actions);
     }
@@ -68,7 +79,7 @@ function makeCard(label, sub, blob, dlName) {
 
 function makeSectionHeader(title, count) {
     const h = document.createElement('div');
-    h.className = 'section-header';
+    h.className   = 'section-header';
     h.textContent = count != null ? `${title}  (${count})` : title;
     assetList.appendChild(h);
 }
@@ -123,8 +134,17 @@ function handleTextAssets(objects) {
     }
 }
 
+function handleMeshes(objects) {
+    const meshes = objects.filter(o => o.classID === 43);
+    if (!meshes.length) return;
+    makeSectionHeader('Meshes', meshes.length);
+    for (const m of meshes) {
+        makeCard(m.name || '(unnamed)', m.parseError ? `Parse error: ${m.parseError}` : 'Mesh — uploaded to GPU if valid');
+    }
+}
+
 function handleOtherAssets(objects) {
-    const skip = new Set([28, 49]);
+    const skip = new Set([28, 49, 43]);
     const rest = objects.filter(o => !skip.has(o.classID));
     if (!rest.length) return;
 
@@ -142,9 +162,52 @@ function handleOtherAssets(objects) {
     }
 }
 
+function buildSceneTree(scene) {
+    if (!scenePanel || !scene) return;
+    clearScene();
+
+    const header = document.createElement('div');
+    header.className   = 'section-header';
+    header.textContent = `Scene Graph — ${scene.gameObjects.length} GameObjects`;
+    scenePanel.appendChild(header);
+
+    for (const go of scene.gameObjects.slice(0, 200)) {
+        const row = document.createElement('div');
+        row.className   = 'scene-row';
+        row.textContent = `${go.isActive ? '◉' : '○'} ${go.name}`;
+        if (go.localPosition) {
+            const pos = go.localPosition;
+            const sub = document.createElement('span');
+            sub.className   = 'scene-pos';
+            sub.textContent = ` (${(pos.x??0).toFixed(2)}, ${(pos.y??0).toFixed(2)}, ${(pos.z??0).toFixed(2)})`;
+            row.appendChild(sub);
+        }
+        scenePanel.appendChild(row);
+    }
+
+    if (scene.assemblies?.length) {
+        const aHeader = document.createElement('div');
+        aHeader.className   = 'section-header';
+        aHeader.textContent = `Assemblies — ${scene.assemblies.length}`;
+        scenePanel.appendChild(aHeader);
+        for (const a of scene.assemblies) {
+            const row = document.createElement('div');
+            row.className   = 'scene-row';
+            row.textContent = a;
+            scenePanel.appendChild(row);
+        }
+    }
+}
+
+let activeEmulator = null;
+
 unityFileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     clearAssets();
+    clearScene();
+    if (runtimeLog) runtimeLog.innerHTML = '';
+
+    if (activeEmulator) { activeEmulator.stop(); activeEmulator = null; }
 
     if (!file) { setStatus('No file selected.'); return; }
     if (!file.name.endsWith('.unity3d')) { setStatus('Please select a .unity3d file.'); return; }
@@ -177,7 +240,7 @@ unityFileInput.addEventListener('change', async (e) => {
 
     if (!files.length) {
         const p = document.createElement('p');
-        p.className = 'placeholder';
+        p.className   = 'placeholder';
         p.textContent = parsed.error ?? 'No files could be extracted from this bundle.';
         assetList.appendChild(p);
         return;
@@ -186,7 +249,14 @@ unityFileInput.addEventListener('change', async (e) => {
     const { parseSerializedFile } = await import('./serializedf.js');
 
     let totalObjects = 0;
+    const allObjects = [];
+
     for (const f of files) {
+        if (f.name.endsWith('.dll') || f.name.endsWith('.mdb')) {
+            appendStatus(`  Assembly: ${f.name}`);
+            continue;
+        }
+
         appendStatus(`\nParsing ${f.name} …`);
         let sf;
         try {
@@ -198,21 +268,27 @@ unityFileInput.addEventListener('change', async (e) => {
 
         if (!sf.ok) {
             const blob = new Blob([f.buffer], { type: 'application/octet-stream' });
-            makeCard(f.name, `${sf.error ?? 'Could not parse as SerializedFile'} — raw download available`, blob, f.name);
+            makeCard(f.name, `${sf.error ?? 'Could not parse'} — raw download`, blob, f.name);
             continue;
         }
 
         appendStatus(`  Unity ${sf.unityVersion}  SF v${sf.version}  types=${sf.typeCount}  objects=${sf.objectCount}${sf.truncated ? ' (capped at 2000)' : ''}`);
         totalObjects += sf.objectCount;
+        allObjects.push(...sf.objects);
 
         await handleTextures(sf.objects);
         handleTextAssets(sf.objects);
+        handleMeshes(sf.objects);
         handleOtherAssets(sf.objects);
     }
 
     appendStatus(`\nDone — ${totalObjects} total object${totalObjects !== 1 ? 's' : ''} across ${files.length} file${files.length !== 1 ? 's' : ''}.`);
 
-    import('./emulator.js').then(({ UWPjs }) => {
-        new UWPjs(buffer).start();
-    }).catch(() => {});
+    const { UWPjs } = await import('./emulator.js');
+    activeEmulator = new UWPjs(buffer, {
+        canvasId: 'game-canvas',
+        onLog: msg => appendRuntimeLog(msg),
+    });
+    const result = await activeEmulator.start();
+    if (result?.scene) buildSceneTree(result.scene);
 });

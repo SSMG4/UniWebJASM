@@ -316,3 +316,104 @@ footer a:hover {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
+
+#viewport-section {
+    width: 100%;
+    max-width: 960px;
+    background: #000;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+}
+
+#canvas-bar {
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    padding: 0.35em 1em;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+}
+
+#game-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #000;
+}
+
+#bottom-panels {
+    width: 100%;
+    max-width: 960px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+#scene-wrap,
+#log-wrap {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.panel-label {
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    padding: 0.35em 1em;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+}
+
+#scene-panel {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 0.5em 0;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+}
+
+#runtime-log {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 0.5em 1em;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--fg-muted);
+}
+
+#runtime-log div {
+    border-bottom: 1px solid var(--bg-inset);
+    padding: 1px 0;
+}
+
+.scene-row {
+    padding: 2px 1em;
+    color: var(--fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+.scene-row:hover {
+    background: var(--accent-soft);
+}
+
+.scene-pos {
+    color: var(--fg-subtle);
+    font-size: 0.72rem;
+}
+
+@media (max-width: 600px) {
+    #bottom-panels { grid-template-columns: 1fr; }
+}
