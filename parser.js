@@ -209,38 +209,31 @@ function readUnityFSBundle(u8) {
 }
 
 function readUnityWebRawBundle(u8) {
-    const r          = new BinReader(u8);
-    const signature  = r.zstr();
-    const fileVersion = r.u32be();
+    const r            = new BinReader(u8);
+    const signature    = r.zstr();
+    const fileVersion  = r.u32be();
     const unityVersion = r.zstr();
     const buildTarget  = r.zstr();
 
+    let lzmaStart;
+
     if (fileVersion === 6) {
+        r.u32be();
+        const headerSize = r.u32be();
+        r.u32be();
+        r.u32be();
         const levelCount = r.u32be();
-        for (let i = 0; i < levelCount; i++) {
-            r.u32be();
-            r.u32be();
-        }
+        for (let i = 0; i < levelCount; i++) { r.u32be(); r.u32be(); }
         r.u32be();
         r.u32be();
         r.u32be();
+        lzmaStart = (headerSize > r.tell()) ? headerSize : r.tell();
     } else {
         r.u32be();
+        const headerSize = r.u32be();
         r.u32be();
         r.u32be();
-        r.u32be();
-    }
-
-    const headerEnd = r.tell();
-
-    let lzmaStart = headerEnd;
-    while (lzmaStart < u8.length - 5) {
-        const propsByte = u8[lzmaStart];
-        if (propsByte < 9 * 5 * 5) {
-            const dictSize = (u8[lzmaStart+1] | (u8[lzmaStart+2] << 8) | (u8[lzmaStart+3] << 16) | (u8[lzmaStart+4] << 24)) >>> 0;
-            if (dictSize > 0 && dictSize <= 0x10000000) break;
-        }
-        lzmaStart++;
+        lzmaStart = (headerSize > 0 && headerSize < u8.length) ? headerSize : r.tell();
     }
 
     let decompressed;
