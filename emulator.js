@@ -55,6 +55,13 @@ export class UWPjs {
 
         const allObjects = sfList.flatMap(sf => sf.objects);
         this.renderer.loadMeshes(allObjects);
+        this.renderer.setSceneInfo({
+            gameObjects:    scene.gameObjects.length,
+            cameras:        scene.cameras.length,
+            lights:         scene.lights.length,
+            monoBehaviours: scene.monoBehaviours.length,
+            assemblies:     scene.assemblies,
+        });
 
         this.runtime.startLoop(() => this.renderer.renderFrame());
         this._log('Game loop started.');

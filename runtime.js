@@ -24,28 +24,8 @@ export class UWPjsRuntime {
     }
 
     async init() {
-        this._log('Runtime init — attempting Mono/WASM bootstrap');
-
-        const candidates = [
-            'https://cdn.jsdelivr.net/npm/@xamarin/mono-wasm-sdk/index.js',
-        ];
-
-        for (const url of candidates) {
-            try {
-                const res = await fetch(url, { cache: 'force-cache' });
-                if (res.ok) {
-                    this._monoReady = true;
-                    this._log(`Mono candidate fetched from ${url} (full IL2CPP/Mono is not yet wired — C# execution is stubbed)`);
-                    break;
-                }
-            } catch {}
-        }
-
-        if (!this._monoReady) {
-            this._log('Mono WASM not available — C# MonoBehaviour execution will be simulated');
-        }
-
-        this._emit('ready', { monoReady: this._monoReady });
+        this._log('Runtime init — C# execution simulated (Mono/IL2CPP not yet wired)');
+        this._emit('ready', { monoReady: false });
     }
 
     loadAssemblies(files) {
@@ -90,15 +70,22 @@ export class UWPjsRuntime {
                 components: [],
                 children:   [],
                 parent:     null,
+                localPosition: { x: 0, y: 0, z: 0 },
+                localRotation: { x: 0, y: 0, z: 0, w: 1 },
+                localScale:    { x: 1, y: 1, z: 1 },
             });
         }
 
         for (const tf of transforms) {
-            const go = this.gameObjects.get(tf.pathID);
+            const goRef = tf.father ?? tf.m_GameObject;
+            const goPathID = goRef?.m_PathID ?? goRef?.pathID ?? null;
+            const go = goPathID !== null
+                ? this.gameObjects.get(goPathID)
+                : this.gameObjects.get(tf.pathID);
             if (go) {
-                go.localPosition = tf.localPosition ?? { x: 0, y: 0, z: 0 };
-                go.localRotation = tf.localRotation ?? { x: 0, y: 0, z: 0, w: 1 };
-                go.localScale    = tf.localScale    ?? { x: 1, y: 1, z: 1 };
+                go.localPosition = tf.localPosition ?? go.localPosition;
+                go.localRotation = tf.localRotation ?? go.localRotation;
+                go.localScale    = tf.localScale    ?? go.localScale;
             }
         }
 

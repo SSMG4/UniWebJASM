@@ -338,6 +338,8 @@ export function parseSerializedFile(buffer, fileName) {
     const objCount = view.getUint32(pos, le); pos += 4;
     if (objCount > 500000) return { ok: false, error: `Implausible object count ${objCount}`, objects: [], unityVersion, fileName: fileName ?? '' };
 
+    const typeByClassID = new Map(types.map(t => [t.classID, t.typeTree]));
+
     const rawObjs = [];
 
     for (let o = 0; o < objCount; o++) {
@@ -362,7 +364,7 @@ export function parseSerializedFile(buffer, fileName) {
         }
         if (version < 11) pos++;
 
-        if (classID === -1 && typeID >= 0 && typeID < types.length) classID = types[typeID].classID;
+        if (classID === -1) classID = typeID;
         rawObjs.push({ pathID, byteStart, byteSize, typeID, classID });
     }
 
@@ -371,8 +373,15 @@ export function parseSerializedFile(buffer, fileName) {
     for (const obj of rawObjs.slice(0, 2000)) {
         const classID   = obj.classID;
         const className = CLASSID.get(classID) ?? `Class${classID}`;
-        const typeTree  = (obj.typeID >= 0 && obj.typeID < types.length) ? types[obj.typeID].typeTree : null;
-        const start     = dataOffset + obj.byteStart;
+
+        let typeTree = null;
+        if (version < 12) {
+            typeTree = typeByClassID.get(obj.classID) ?? typeByClassID.get(obj.typeID) ?? null;
+        } else {
+            typeTree = (obj.typeID >= 0 && obj.typeID < types.length) ? types[obj.typeID].typeTree : null;
+        }
+
+        const start = dataOffset + obj.byteStart;
 
         if (start < 0 || start + obj.byteSize > u8.length || obj.byteSize === 0) {
             objects.push({ classID, className, name: '?', error: 'out of bounds' });
